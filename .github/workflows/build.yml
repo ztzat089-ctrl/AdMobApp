@@ -9,26 +9,118 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Java 21
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Create mini project
+        run: |
+          mkdir -p mini/app/src/main/java/com/example/adsdk
+          cat > mini/settings.gradle <<'EOF'
+          pluginManagement {
+            repositories {
+              google()
+              mavenCentral()
+              gradlePluginPortal()
+            }
+          }
+          dependencyResolutionManagement {
+            repositories {
+              google()
+              mavenCentral()
+            }
+          }
+          rootProject.name = "adsdk"
+          include ':app'
+          EOF
+          cat > mini/build.gradle <<'EOF'
+          plugins {
+            id 'com.android.application' version '8.7.3' apply false
+          }
+          EOF
+          cat > mini/app/build.gradle <<'EOF'
+          plugins {
+            id 'com.android.application'
+          }
+          android {
+            namespace 'com.example.adsdk'
+            compileSdk 35
+            defaultConfig {
+              applicationId 'com.example.adsdk'
+              minSdk 23
+              targetSdk 35
+              versionCode 1
+              versionName '1.0'
+              multiDexEnabled true
+            }
+            compileOptions {
+              sourceCompatibility JavaVersion.VERSION_17
+              targetCompatibility JavaVersion.VERSION_17
+            }
+            buildTypes {
+              debug {
+                minifyEnabled false
+              }
+            }
+          }
+          dependencies {
+            implementation 'com.google.android.gms:play-services-ads:23.6.0'
+          }
+          EOF
+          cat > mini/app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.INTERNET"/>
+            <application android:label="adsdk">
+              <meta-data
+                android:name="com.google.android.gms.ads.APPLICATION_ID"
+                android:value="ca-app-pub-3940256099942544~3347511713"/>
+              <activity android:name=".MainActivity" android:exported="true">
+                <intent-filter>
+                  <action android:name="android.intent.action.MAIN"/>
+                  <category android:name="android.intent.category.LAUNCHER"/>
+                </intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          EOF
+          cat > mini/app/src/main/java/com/example/adsdk/MainActivity.java <<'EOF'
+          package com.example.adsdk;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import com.google.android.gms.ads.AdRequest;
+          import com.google.android.gms.ads.AdSize;
+          import com.google.android.gms.ads.AdView;
+          import com.google.android.gms.ads.MobileAds;
+
+          public class MainActivity extends Activity {
+            @Override
+            protected void onCreate(Bundle b) {
+              super.onCreate(b);
+              MobileAds.initialize(this);
+              AdView v = new AdView(this);
+              v.setAdSize(AdSize.BANNER);
+              v.setAdUnitId("ca-app-pub-3940256099942544/6300978111");
+              v.loadAd(new AdRequest.Builder().build());
+              setContentView(v);
+            }
+          }
+          EOF
 
       - name: Build debug APK
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+        run: gradle -p mini assembleDebug --no-daemon --stacktrace
 
       - name: Locate APK
         run: |
-          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          APK=$(find mini/app/build/outputs/apk/debug -name "*.apk" | head -1)
           echo "Found: $APK"
           cp "$APK" admob-demo.apk
 
@@ -43,7 +135,7 @@ jobs:
           java -jar apktool.jar d -f admob-demo.apk -o admob-demo_src
           zip -qr admob-demo_src.zip admob-demo_src
 
-      - name: Check ads SDK is readable (not obfuscated)
+      - name: Check ads SDK is readable
         run: |
           find admob-demo_src -path "*com/google/android/gms/ads/AdView.smali" || echo "AdView NOT FOUND"
           echo "internal/ads classes:"
