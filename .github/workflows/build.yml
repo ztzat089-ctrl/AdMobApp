@@ -23,6 +23,11 @@ jobs:
       - name: Create mini project
         run: |
           mkdir -p mini/app/src/main/java/com/example/adsdk
+          cat > mini/gradle.properties <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=false
+          org.gradle.jvmargs=-Xmx3g
+          EOF
           cat > mini/settings.gradle <<'EOF'
           pluginManagement {
             repositories {
@@ -116,7 +121,9 @@ jobs:
           EOF
 
       - name: Build debug APK
-        run: gradle -p mini assembleDebug --no-daemon --stacktrace
+        run: |
+          gradle -p mini assembleDebug --no-daemon > build.log 2>&1 || { grep -B2 -A20 "What went wrong" build.log; exit 1; }
+          tail -5 build.log
 
       - name: Locate APK
         run: |
